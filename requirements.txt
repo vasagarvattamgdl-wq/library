@@ -1,0 +1,7 @@
+
+streamlit
+pandas
+openpyxl
+google-cloud-firestore
+firebase-admin
+watchdog
