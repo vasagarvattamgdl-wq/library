@@ -5,6 +5,16 @@ from st_keyup import st_keyup
 
 st.set_page_config(page_title="வாசகர் வட்டம் / Bibliophiles📚📖 ", layout="wide")
 
+# Hide GitHub icon and menu
+hide_menu_style = """
+<style>
+#MainMenu {visibility: hidden;}
+header {visibility: hidden;}
+footer {visibility: hidden;}
+</style>
+"""
+st.markdown(hide_menu_style, unsafe_allow_html=True)
+
 # Session State Initialization
 if 'authenticated_user' not in st.session_state:
     st.session_state['authenticated_user'] = None
