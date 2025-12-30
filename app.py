@@ -3,7 +3,7 @@ import pandas as pd
 import data_manager as dm
 from st_keyup import st_keyup
 
-st.set_page_config(page_title="Vasagar Vattam MEXICO ", layout="wide")
+st.set_page_config(page_title="வாசகர் வட்டம் / Bibliophiles📚📖 ", layout="wide")
 
 # Session State Initialization
 if 'authenticated_user' not in st.session_state:
@@ -43,7 +43,7 @@ if mode == "Admin Portal":
             col1, col2, col3 = st.columns(3)
             col1.metric("Total Books", len(books))
             col2.metric("Active Loans", len(transactions[transactions['status'] == 'ACTIVE']))
-            # Borrow requests in pending, Return requests in transactions
+            # Lend requests in pending, Return requests in transactions
             col3.metric("Pending Actions", len(pending) + len(transactions[transactions['status'] == 'RETURN_REQUESTED']))
             
             st.divider()
@@ -53,10 +53,10 @@ if mode == "Admin Portal":
             
             # Filter pending requests
             # pending dataframe holds BORROW_REQUESTED
-            pending_borrows = pending
+            pending_lends = pending
             pending_returns = transactions[transactions['status'] == 'RETURN_REQUESTED']
             
-            q_tab1, q_tab2 = st.tabs([f"Borrow Requests ({len(pending_borrows)})", f"Return Requests ({len(pending_returns)})"])
+            q_tab1, q_tab2 = st.tabs([f"Lend Requests ({len(pending_lends)})", f"Return Requests ({len(pending_returns)})"])
             
             with q_tab1:
                 if not pending_borrows.empty:
@@ -82,7 +82,7 @@ if mode == "Admin Portal":
                                 else: st.error(msg)
                             st.divider()
                 else:
-                    st.info("No pending borrow requests.")
+                    st.info("No pending lend requests.")
 
             with q_tab2:
                 if not pending_returns.empty:
@@ -247,12 +247,16 @@ if mode == "Admin Portal":
             with st.expander("Register New Member"):
                 with st.form("reg_member_form"):
                     m_name = st.text_input("Name")
-                    m_mobile = st.text_input("Mobile Number")
+                    m_mobile = st.text_input("Mobile Number", max_chars=10, placeholder="10 digit number")
                     m_email = st.text_input("Email")
                     submitted = st.form_submit_button("Register Member")
                     
                     if submitted:
-                        if m_name and m_mobile:
+                        if not m_name or not m_mobile:
+                            st.error("Name and Mobile are required.")
+                        elif not m_mobile.isdigit() or len(m_mobile) != 10:
+                            st.error("Mobile number must be exactly 10 digits.")
+                        elif m_name and m_mobile:
                             success, msg = dm.register_member(m_name, m_mobile, m_email)
                             if success:
                                 st.success(msg)
@@ -283,16 +287,21 @@ if mode == "Admin Portal":
                             curr_email = str(user_row.iloc[0]['email']) if pd.notna(user_row.iloc[0]['email']) else ""
                             
                             u_name = st.text_input("Name", value=curr_name)
-                            u_mobile = st.text_input("Mobile Number", value=dm.normalize_mobile(curr_mobile))
+                            u_mobile = st.text_input("Mobile Number", value=dm.normalize_mobile(curr_mobile), max_chars=10, placeholder="10 digit number")
                             u_email = st.text_input("Email", value=curr_email)
                             
                             if st.form_submit_button("Update Member Details"):
-                                success, msg = dm.update_user_details(edit_user_id, u_name, u_mobile, u_email)
-                                if success:
-                                    st.success(msg)
-                                    st.rerun()
+                                if not u_name or not u_mobile:
+                                    st.error("Name and Mobile are required.")
+                                elif not u_mobile.isdigit() or len(u_mobile) != 10:
+                                    st.error("Mobile number must be exactly 10 digits.")
                                 else:
-                                    st.error(msg)
+                                    success, msg = dm.update_user_details(edit_user_id, u_name, u_mobile, u_email)
+                                    if success:
+                                        st.success(msg)
+                                        st.rerun()
+                                    else:
+                                        st.error(msg)
                     else:
                         st.warning("Member ID not found.")
 
@@ -324,7 +333,7 @@ if mode == "Admin Portal":
 
 # --- USER PORTAL ---
 elif mode == "User Portal":
-    st.title("Vasagar Vattam MEXICO")
+    st.title("வாசகர் வட்டம் / Bibliophiles📚📖")
     
     # Custom Navigation Buttons
     if 'user_view' not in st.session_state:
@@ -345,7 +354,7 @@ elif mode == "User Portal":
     # --- VIEW: BROWSE ---
     if st.session_state['user_view'] == 'browse':
         st.subheader("Browse Books")
-        st.caption("Search and borrow books instantly.")
+        st.caption("Search and lend books instantly.")
         books, _, _, _ = dm.load_data()
         
         # Search & Filter
@@ -383,32 +392,58 @@ elif mode == "User Portal":
         else:
              st.caption(f"Found {len(display_books)} books.")
 
-        # Borrow Dialog
-        @st.dialog("Request to Borrow")
-        def borrow_dialog(book_id, book_title):
+        # Lend Dialog
+        @st.dialog("Request to Lend")
+        def lend_dialog(book_id, book_title):
             st.write(f"Requesting: **{book_title}** ({book_id})")
             st.info("Your request will be sent to the Admin for approval.")
-            with st.form("borrow_form"):
+            with st.form("lend_form"):
                 name = st.text_input("Your Name")
-                mobile = st.text_input("Mobile Number")
+                mobile = st.text_input("Mobile Number", max_chars=10, placeholder="10 digit number")
                 email = st.text_input("Email Address")
                 submitted = st.form_submit_button("Send Request")
                 
                 if submitted:
-                    if name and mobile and email:
-                        success, msg = dm.borrow_book_request(book_id, name, mobile, email)
+                    if not name or not mobile or not email:
+                        st.error("All fields are required.")
+                    elif not mobile.isdigit() or len(mobile) != 10:
+                        st.error("Mobile number must be exactly 10 digits.")
+                    else:
+                        success, msg = dm.lend_book_request(book_id, name, mobile, email)
                         if success:
                             st.success(msg)
                             st.rerun()
                         else:
                             st.error(msg)
+        
+        # Interest Dialog
+        @st.dialog("Express Interest")
+        def interest_dialog(book_id, book_title):
+            st.write(f"Book: **{book_title}** ({book_id})")
+            st.warning("This book is currently lent out. We'll notify the admin of your interest.")
+            with st.form("interest_form"):
+                name = st.text_input("Your Name")
+                mobile = st.text_input("Mobile Number", max_chars=10, placeholder="10 digit number")
+                email = st.text_input("Email Address")
+                submitted = st.form_submit_button("Submit Interest")
+                
+                if submitted:
+                    if not name or not mobile or not email:
+                        st.error("All fields are required.")
+                    elif not mobile.isdigit() or len(mobile) != 10:
+                        st.error("Mobile number must be exactly 10 digits.")
                     else:
-                        st.error("All fields (Name, Mobile, Email) are required.")
+                        success, msg = dm.express_interest(book_id, book_title, name, mobile, email)
+                        if success:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
 
         # Grid
         for index, row in display_books.iterrows():
             with st.container():
-                c1, c2, c3, c4 = st.columns([4, 3, 2, 2])
+                c1, c2, c3, c4 = st.columns([3, 3, 2, 2])
                 c1.write(f"**{row['title']}**")
                 c1.caption(f"ID: {row['id']}")
                 c2.write(f"*{row['author']}*")
@@ -416,17 +451,18 @@ elif mode == "User Portal":
                 status = row['status']
                 if status == 'AVAILABLE':
                     c3.success(status)
-                    if c4.button("Borrow", key=f"btn_{row['id']}"):
-                        borrow_dialog(row['id'], row['title'])
+                    if c4.button("📚 Lend", key=f"btn_{row['id']}"):
+                        lend_dialog(row['id'], row['title'])
                 else:
                     c3.error(status)
-                    c4.write("Unavailable")
+                    if c4.button("⭐ Interested", key=f"int_{row['id']}"):
+                        interest_dialog(row['id'], row['title'])
                 st.divider()
 
     # --- VIEW: MY ACCOUNT ---
     elif st.session_state['user_view'] == 'account':
         st.header("My Account")
-        st.info("Enter your Mobile Number to see your borrowed books and request returns.")
+        st.info("Enter your Mobile Number to see your lent books and request returns.")
         
         c_acc1, c_acc2 = st.columns([3, 1])
         with c_acc1:
@@ -444,11 +480,11 @@ elif mode == "User Portal":
                 for item in history:
                     with st.container():
                         st.write(f"**{item['book_title']}** (ID: {item['book_id']})")
-                        st.write(f"Borrowed Date: {item['borrow_date']}")
+                        st.write(f"Lent Date: {item['borrow_date']}")
                         
                         # Status Logic
                         if item['status'] == 'ACTIVE':
-                            st.success("Status: BORROWED (Active)")
+                            st.success("Status: LENT (Active)")
                             if st.button("Request Return", key=f"ret_{item['transaction_id']}"):
                                 success, msg = dm.request_return(item['book_id'], my_mobile)
                                 if success:
@@ -463,4 +499,4 @@ elif mode == "User Portal":
                         
                         st.divider()
             else:
-                st.write("No active records found. If you have borrowed books, please ask Admin to check 'Legacy Data'.")
+                st.write("No active records found. If you have lent books, please ask Admin to check 'Legacy Data'.")

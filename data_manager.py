@@ -183,7 +183,7 @@ def update_user_details(user_id, name, mobile, email):
 
 # --- Transaction Flows ---
 
-def borrow_book_request(book_id, user_name, mobile, email):
+def lend_book_request(book_id, user_name, mobile, email):
     books, _, _, pending = load_data()
     
     # Check book exists and is available
@@ -216,9 +216,32 @@ def borrow_book_request(book_id, user_name, mobile, email):
     pending = pd.concat([pending, new_request], ignore_index=True)
     pending.to_excel(PENDING_FILE, index=False)
     
-    return True, "Borrow request sent! Please wait for Admin approval."
+    return True, "Lend request sent! Please wait for Admin approval."
 
-def approve_borrow(transaction_id):
+def express_interest(book_id, book_title, user_name, mobile, email):
+    """Record user interest in a lent book"""
+    _, _, _, pending = load_data()
+    
+    tx_id = get_next_tx_id()
+    new_interest = pd.DataFrame([{
+        'transaction_id': tx_id,
+        'book_id': book_id,
+        'book_title': book_title,
+        'user_id': 'WALK-IN',
+        'user_name': user_name,
+        'user_email': email,
+        'user_mobile': mobile,
+        'borrow_date': datetime.now().strftime("%Y-%m-%d"),
+        'return_date': None,
+        'status': 'INTERESTED'
+    }])
+    
+    pending = pd.concat([pending, new_interest], ignore_index=True)
+    pending.to_excel(PENDING_FILE, index=False)
+    
+    return True, "Interest recorded! Admin will notify you when available."
+
+def approve_lend(transaction_id):
     books, _, transactions, pending = load_data()
     
     # Find pending request
@@ -229,7 +252,7 @@ def approve_borrow(transaction_id):
     book_id = request.iloc[0]['book_id']
     
     # Update book status
-    books.loc[books['id'] == book_id, 'status'] = 'BORROWED'
+    books.loc[books['id'] == book_id, 'status'] = 'LENT'
     books.to_excel(BOOKS_FILE, index=False)
     
     # Move to transactions
@@ -242,9 +265,9 @@ def approve_borrow(transaction_id):
     pending = pending[pending['transaction_id'] != transaction_id]
     pending.to_excel(PENDING_FILE, index=False)
     
-    return True, "Borrow request approved. Moved to Active Transactions."
+    return True, "Lend request approved. Moved to Active Transactions."
 
-def reject_borrow(transaction_id):
+def reject_lend(transaction_id):
     books, _, _, pending = load_data()
     
     # Find pending request
@@ -262,7 +285,7 @@ def reject_borrow(transaction_id):
     pending = pending[pending['transaction_id'] != transaction_id]
     pending.to_excel(PENDING_FILE, index=False)
     
-    return True, "Borrow request rejected."
+    return True, "Lend request rejected."
 
 def request_return(book_id, mobile):
     _, _, transactions, _ = load_data()
