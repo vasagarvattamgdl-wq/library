@@ -16,18 +16,29 @@ footer {visibility: hidden;}
 st.markdown(hide_menu_style, unsafe_allow_html=True)
 
 # Session State Initialization
+if 'view_mode' not in st.session_state:
+    st.session_state['view_mode'] = 'user'
 if 'authenticated_user' not in st.session_state:
     st.session_state['authenticated_user'] = None
 if 'admin_authenticated' not in st.session_state:
     st.session_state['admin_authenticated'] = False
 
-# Sidebar Navigation
-st.sidebar.title("📚 Library System")
-mode = st.sidebar.radio("Go to", ["User Portal", "Admin Portal"])
+# --- HEADER ---
+col1, col2 = st.columns([0.85, 0.15])
+with col2:
+    if st.session_state.view_mode == 'user':
+        if st.button("🔑 Admin Portal", use_container_width=True):
+            st.session_state.view_mode = 'admin'
+            st.rerun()
+    else:
+        if st.button("🏠 User Portal", use_container_width=True):
+            st.session_state.view_mode = 'user'
+            st.rerun()
 
 # --- ADMIN PORTAL ---
-if mode == "Admin Portal":
-    st.title("Admin Portal");
+if st.session_state.view_mode == "admin":
+    with col1:
+        st.title("Admin Portal")
     
     # Login
     if not st.session_state['admin_authenticated']:
@@ -342,7 +353,7 @@ if mode == "Admin Portal":
                     st.error(msg)
 
 # --- USER PORTAL ---
-elif mode == "User Portal":
+elif st.session_state.view_mode == "user":
     st.title("வாசகர் வட்டம் / Bibliophiles📚📖")
     
     # Custom Navigation Buttons
