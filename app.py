@@ -69,8 +69,8 @@ if mode == "Admin Portal":
             q_tab1, q_tab2 = st.tabs([f"Lend Requests ({len(pending_lends)})", f"Return Requests ({len(pending_returns)})"])
             
             with q_tab1:
-                if not pending_borrows.empty:
-                    for idx, row in pending_borrows.iterrows():
+                if not pending_lends.empty:
+                    for idx, row in pending_lends.iterrows():
                         with st.container():
                             c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
                             c1.write(f"**{row['book_title']}**")
