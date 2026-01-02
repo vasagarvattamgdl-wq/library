@@ -89,14 +89,14 @@ if st.session_state.view_mode == "admin":
                             c2.write(f"User: {row['user_name']}\nMobile: {row['user_mobile']}")
                             
                             if c3.button("Approve", key=f"app_bor_{row['transaction_id']}"):
-                                success, msg = dm.approve_borrow(row['transaction_id'])
+                                success, msg = dm.approve_lend(row['transaction_id'])
                                 if success:
                                     st.success(msg)
                                     st.rerun()
                                 else: st.error(msg)
                                 
                             if c4.button("Reject", key=f"rej_bor_{row['transaction_id']}"):
-                                success, msg = dm.reject_borrow(row['transaction_id'])
+                                success, msg = dm.reject_lend(row['transaction_id'])
                                 if success:
                                     st.warning(msg)
                                     st.rerun()
