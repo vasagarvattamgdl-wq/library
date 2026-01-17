@@ -2,6 +2,7 @@ import qrcode
 
 # Streamlit app URL
 url = "https://library-gh68qfhjcinpbcyv8kh898.streamlit.app/"
+#url ="https://glowing-space-disco-69qqvx5pg6r434wwp-8501.app.github.dev"
 
 # Create QR code
 qr = qrcode.QRCode(
