@@ -1,8 +1,2 @@
-
-streamlit
-pandas
-openpyxl
-google-cloud-firestore
-firebase-admin
-watchdog
-streamlit-keyup
+pillow==12.1.0
+qrcode==8.2

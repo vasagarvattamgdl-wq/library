@@ -511,7 +511,8 @@ if st.session_state.view_mode == "admin":
                     st.button("Load Member")
                     
                 if edit_user_id:
-                    user_row = users[users['user_id'] == edit_user_id]
+                    # Case insensitive lookup
+                    user_row = users[users['user_id'].astype(str).str.upper() == edit_user_id.strip().upper()]
                     if not user_row.empty:
                         st.info(f"Editing: {user_row.iloc[0]['name']}")
                         with st.form("edit_user_form"):
@@ -533,13 +534,11 @@ if st.session_state.view_mode == "admin":
                                     elif not u_mobile.isdigit() or len(u_mobile) != 10:
                                         st.error("Mobile number must be exactly 10 digits.")
                                     else:
-                                        success, msg = dm.update_user_details(edit_user_id, u_name, u_mobile, u_email)
+                                        success, msg = dm.update_user_details(user_row.iloc[0]['user_id'], u_name, u_mobile, u_email)
                                         if success:
                                             st.success(msg)
-                                            # Refresh to show updates
-                                            # st.rerun() 
-                                            # (Rerun happens automatically on submit usually, but let's be safe)
-                                            pass 
+                                            # Rerun to show updates immediately
+                                            st.rerun() 
                                         else:
                                             st.error(msg)
                             with c_del:
@@ -674,19 +673,25 @@ elif st.session_state.view_mode == "user":
         
         c_acc1, c_acc2, c_acc3 = st.columns([2, 0.5, 2])
         with c_acc1:
-            my_mobile = st.text_input("Enter Mobile Number", key="my_acc_mobile")
+            my_mobile = st.text_input("Mobile Number", key="my_acc_mobile")
         with c_acc2:
-            st.markdown("<h3 style='text-align: center; padding-top: 20px;'>OR</h3>", unsafe_allow_html=True)
+            st.markdown("<h4 style='text-align: center; padding-top: 20px;'>OR</h4>", unsafe_allow_html=True)
         with c_acc3:
-            my_mem_id = st.text_input("Enter Member ID", key="my_acc_mem_id")
+            my_mem_id = st.text_input("Member ID", key="my_acc_mem_id")
             
         st.button("Check Loans", key="btn_check_loans")
         
-        identifier = my_mobile if my_mobile else my_mem_id
+        identifier = None
+        if my_mobile: identifier = my_mobile
+        elif my_mem_id: identifier = my_mem_id
         
         if identifier:
             history = dm.get_user_history(identifier)
             if history:
+                # Show Member Name from history
+                user_name = history[0].get('user_name', 'Unknown')
+                st.success(f"Welcome, **{user_name}**!")
+                
                 st.subheader(f"My Books ({len(history)})")
                 for item in history:
                     with st.container():

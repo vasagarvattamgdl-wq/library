@@ -495,14 +495,13 @@ def get_user_history(identifier):
     
     _, _, transactions, pending = load_data()
     
-    # We treat identifier as either mobile or ID
+    # We treat identifier as either mobile, ID, or Name
     # Normalize if it looks like a mobile (digits)
     check_mobile = None
     check_id = str(identifier).strip().upper()
+    check_name = str(identifier).strip().lower()
     
     # Simple heuristic: if it contains only digits and length > 5, treat as mobile primarily
-    # But user IDs are formatted "MEM-XXX".
-    # Let's normalize mobile if possible
     try:
         check_mobile = normalize_mobile(identifier)
     except:
@@ -516,9 +515,10 @@ def get_user_history(identifier):
         if check_mobile and normalize_mobile(row['user_mobile']) == check_mobile:
             return True
         # Check ID
-        # Some rows might not have user_id if legacy? But our new code adds it.
-        # Legacy rows might have 'WALK-IN', so we check explicitly.
         if 'user_id' in row and str(row['user_id']).strip().upper() == check_id:
+            return True
+        # Check Name (Case-insensitive match)
+        if 'user_name' in row and str(row['user_name']).strip().lower() == check_name:
             return True
         return False
     
