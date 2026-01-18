@@ -23,97 +23,6 @@ if 'authenticated_user' not in st.session_state:
 if 'admin_authenticated' not in st.session_state:
     st.session_state['admin_authenticated'] = False
 
-# --- DIALOGS (Global Scope to avoid Nesting Errors) ---
-
-@st.dialog("Request to Lend")
-def lend_dialog(book_id, book_title):
-    st.write(f"Requesting: **{book_title}** ({book_id})")
-    
-    # --- Auto-Fill State Management ---
-    # Use keys directly bound to the input widgets
-    if 'dlg_lend_name' not in st.session_state: st.session_state.dlg_lend_name = ""
-    if 'dlg_lend_mobile' not in st.session_state: st.session_state.dlg_lend_mobile = ""
-    if 'dlg_lend_email' not in st.session_state: st.session_state.dlg_lend_email = ""
-    
-    # Step 1: Member Lookup (Optional)
-    col_mem1, col_mem2 = st.columns([3, 1])
-    with col_mem1:
-        mem_id_input = st.text_input("Member ID (Optional)", placeholder="e.g. MEM-005")
-    with col_mem2:
-        st.write("")
-        st.write("")
-        # We use a key for the button to avoid any potential reload ambiguity
-        if st.button("Check", key="btn_check_mem"):
-            if mem_id_input:
-                mem = dm.get_member_by_id(mem_id_input)
-                if mem:
-                    # Update the session state keys bound to the widgets
-                    st.session_state.dlg_lend_name = mem['name']
-                    # Normalize mobile to remove .0 and ensure string
-                    st.session_state.dlg_lend_mobile = dm.normalize_mobile(mem['mobile'])
-                    st.session_state.dlg_lend_email = str(mem['email']) if pd.notna(mem['email']) else ""
-                    st.success(f"Found: {mem['name']}")
-                    # Do NOT rerun here. Streamlit updates the widget values automatically via session state binding.
-                else:
-                    st.error("Member ID not found.")
-    
-    st.divider()
-    
-    # Step 2: Details Form
-    with st.form("lend_form"):
-        # Bind inputs to session state keys
-        name = st.text_input("Your Name", key="dlg_lend_name")
-        mobile = st.text_input("Mobile Number", max_chars=10, placeholder="10 digit number", key="dlg_lend_mobile")
-        email = st.text_input("Email Address", key="dlg_lend_email")
-        
-        st.caption("If you don't have a Member ID, just fill above. We'll register you automatically!")
-        
-        submitted = st.form_submit_button("Send Request")
-        
-        if submitted:
-            if not name or not mobile:
-                st.error("Name and Mobile are required.")
-            elif not mobile.isdigit() or len(mobile) != 10:
-                st.error("Mobile number must be exactly 10 digits.")
-            else:
-                # Allow passing member_id if it was verified
-                mid = mem_id_input if mem_id_input else None
-                success, msg = dm.lend_book_request(book_id, name, mobile, email, member_id=mid)
-                if success:
-                    st.success(msg)
-                    # Clear state for next time
-                    del st.session_state.dlg_lend_name
-                    del st.session_state.dlg_lend_mobile
-                    del st.session_state.dlg_lend_email
-                    # Rerun to close the dialog and refresh main page
-                    st.rerun()
-                else:
-                    st.error(msg)
-
-@st.dialog("Express Interest")
-def interest_dialog(book_id, book_title):
-    st.write(f"Book: **{book_title}** ({book_id})")
-    st.warning("This book is currently lent out. We'll notify the admin of your interest.")
-    with st.form("interest_form"):
-        name = st.text_input("Your Name")
-        mobile = st.text_input("Mobile Number", max_chars=10, placeholder="10 digit number")
-        email = st.text_input("Email Address")
-        submitted = st.form_submit_button("Submit Interest")
-        
-        if submitted:
-            if not name or not mobile or not email:
-                st.error("All fields are required.")
-            elif not mobile.isdigit() or len(mobile) != 10:
-                st.error("Mobile number must be exactly 10 digits.")
-            else:
-                success, msg = dm.express_interest(book_id, book_title, name, mobile, email)
-                if success:
-                    st.success(msg)
-                    st.rerun()
-                else:
-                    st.error(msg)
-
-
 # --- HEADER ---
 col1, col2 = st.columns([0.85, 0.15])
 with col2:
@@ -262,119 +171,36 @@ if st.session_state.view_mode == "admin":
                         active_loans['user_mobile'].astype(str).str.contains(s_loan_user, case=False, na=False)
                     ]
                 
-                # ... (Search filters logic) ...
-                
-                # We need user_id to perform updates, so include it in data but maybe configure column to be read-only or hidden
-                result_active = active_loans[['transaction_id', 'book_title', 'user_id', 'user_name', 'user_mobile', 'borrow_date']].copy()
-                
-                edited_active = st.data_editor(
-                    result_active,
+                st.data_editor(
+                    active_loans[['transaction_id', 'book_title', 'user_name', 'user_mobile', 'borrow_date']],
                     hide_index=True,
-                    use_container_width=True,
-                    key="editor_active_loans",
-                    disabled=['transaction_id', 'book_title', 'user_id', 'user_name', 'borrow_date'] # Only mobile editable
+                    use_container_width=True
                 )
-                
-                # Check for changes
-                if not result_active.equals(edited_active):
-                    # Find changed rows
-                    # We iterate to find where mobile changed
-                    for index, row in edited_active.iterrows():
-                        original_row = result_active.loc[index]
-                        if str(row['user_mobile']) != str(original_row['user_mobile']):
-                            # Mobile changed
-                            user_id = row['user_id']
-                            new_mobile = row['user_mobile']
-                            
-                            # Fetch current details to preserve name/email
-                            # (Or we could assume table name is correct, but email is missing from this view)
-                            curr_mem = dm.get_member_by_id(user_id)
-                            if curr_mem:
-                                # Update
-                                success, msg = dm.update_user_details(
-                                    user_id, 
-                                    curr_mem['name'], 
-                                    new_mobile, 
-                                    curr_mem['email']
-                                )
-                                if success:
-                                    st.success(f"Updated {curr_mem['name']}: {msg}")
-                                    st.rerun()
-                                else:
-                                    st.error(msg)
             
             with t_tab2:
-                # All Transactions Editor
-                st.write("Double-click **User Mobile** to update.")
-                # Ensure all cols are present
-                
-                edited_all_tx = st.data_editor(
-                    transactions,
-                    use_container_width=True,
-                    key="editor_all_tx",
-                    disabled=[c for c in transactions.columns if c != 'user_mobile']
-                )
-                
-                if not transactions.equals(edited_all_tx):
-                     for index, row in edited_all_tx.iterrows():
-                        original_row = transactions.loc[index]
-                        if str(row['user_mobile']) != str(original_row['user_mobile']):
-                            user_id = row['user_id']
-                            new_mobile = row['user_mobile']
-                            
-                            if pd.isna(user_id) or user_id == 'WALK-IN':
-                                # Can we update walk-in? 
-                                # If it's legacy/walk-in without ID, we can only update the transaction record directly?
-                                # But the user asked to "update respective user".
-                                # If WALK-IN, maybe just update the transaction using update_legacy_mobile?
-                                success, msg = dm.update_legacy_mobile(row['transaction_id'], new_mobile)
-                                if success: st.success(msg); st.rerun()
-                            else:
-                                curr_mem = dm.get_member_by_id(user_id)
-                                if curr_mem:
-                                    success, msg = dm.update_user_details(
-                                        user_id, 
-                                        curr_mem['name'], 
-                                        new_mobile, 
-                                        curr_mem['email']
-                                    )
-                                    if success: st.success(msg); st.rerun()
+                st.dataframe(transactions, use_container_width=True)
             
         with tab2:
             st.header("Inventory Management")
             
             # Add Book
             with st.expander("Add New Book"):
-                # Check for success message from previous run
-                if 'add_book_success' in st.session_state:
-                    st.success(st.session_state.add_book_success)
-                    del st.session_state.add_book_success
-                
-                with st.form("add_book_form", clear_on_submit=False):
+                with st.form("add_book_form"):
                     c_add1, c_add2 = st.columns(2)
                     with c_add1:
-                        new_title = st.text_input("Title (Tamil)", key="ab_title")
-                        new_author = st.text_input("Author (Tamil)", key="ab_author")
+                        new_title = st.text_input("Title (Tamil)")
+                        new_author = st.text_input("Author (Tamil)")
                     with c_add2:
-                        new_t_thang = st.text_input("Title (Thanglish)", key="ab_t_thang")
-                        new_a_thang = st.text_input("Author (Thanglish)", key="ab_a_thang")
+                        new_t_thang = st.text_input("Title (Thanglish)")
+                        new_a_thang = st.text_input("Author (Thanglish)")
                         
-                    new_donated = st.text_input("Donated By", key="ab_donated")
+                    new_donated = st.text_input("Donated By")
                     
                     submitted = st.form_submit_button("Add Book")
                     if submitted:
                         if new_title and new_author:
                             success, b_id = dm.add_book(new_title, new_author, new_donated, new_t_thang, new_a_thang)
-                            # Store success message in session state
-                            st.session_state.add_book_success = f"Added '{new_title}' with ID {b_id}"
-                            
-                            # Clear form inputs using keys
-                            st.session_state.ab_title = ""
-                            st.session_state.ab_author = ""
-                            st.session_state.ab_t_thang = ""
-                            st.session_state.ab_a_thang = ""
-                            st.session_state.ab_donated = ""
-                            
+                            st.success(f"Added '{new_title}' with ID {b_id}")
                             st.rerun()
                         else:
                             st.error("Title and Author (Tamil) are required.")
@@ -427,24 +253,13 @@ if st.session_state.view_mode == "admin":
                                 
                             e_donated = st.text_input("Donated By", value=row['donated_by'])
                             
-                            c_upd_b, c_del_b = st.columns([3, 1])
-                            with c_upd_b:
-                                if st.form_submit_button("Update Book Details"):
-                                    success, msg = dm.update_book_details(edit_book_id, e_title, e_author, e_donated, e_t_thang, e_a_thang)
-                                    if success:
-                                        st.success(msg)
-                                        st.rerun()
-                                    else:
-                                        st.error(msg)
-                            with c_del_b:
-                                if st.form_submit_button("Delete Book", type="primary"):
-                                    success, msg = dm.delete_book(edit_book_id)
-                                    if success:
-                                        st.success(msg)
-                                        # Clear state if any
-                                        st.rerun()
-                                    else:
-                                        st.error(msg)
+                            if st.form_submit_button("Update Book Details"):
+                                success, msg = dm.update_book_details(edit_book_id, e_title, e_author, e_donated, e_t_thang, e_a_thang)
+                                if success:
+                                    st.success(msg)
+                                    st.rerun()
+                                else:
+                                    st.error(msg)
                     else:
                         st.warning("Book ID not found.")
 
@@ -470,15 +285,10 @@ if st.session_state.view_mode == "admin":
             
             # Register Member
             with st.expander("Register New Member"):
-                # Check for success message from previous run
-                if 'reg_mem_success' in st.session_state:
-                    st.success(st.session_state.reg_mem_success)
-                    del st.session_state.reg_mem_success
-                
                 with st.form("reg_member_form"):
-                    m_name = st.text_input("Name", key="reg_m_name")
-                    m_mobile = st.text_input("Mobile Number", max_chars=10, placeholder="10 digit number", key="reg_m_mobile")
-                    m_email = st.text_input("Email", key="reg_m_email")
+                    m_name = st.text_input("Name")
+                    m_mobile = st.text_input("Mobile Number", max_chars=10, placeholder="10 digit number")
+                    m_email = st.text_input("Email")
                     submitted = st.form_submit_button("Register Member")
                     
                     if submitted:
@@ -489,11 +299,7 @@ if st.session_state.view_mode == "admin":
                         elif m_name and m_mobile:
                             success, msg = dm.register_member(m_name, m_mobile, m_email)
                             if success:
-                                st.session_state.reg_mem_success = msg
-                                # Clear form inputs
-                                st.session_state.reg_m_name = ""
-                                st.session_state.reg_m_mobile = ""
-                                st.session_state.reg_m_email = ""
+                                st.success(msg)
                                 st.rerun()
                             else:
                                 st.error(msg)
@@ -524,31 +330,15 @@ if st.session_state.view_mode == "admin":
                             u_mobile = st.text_input("Mobile Number", value=dm.normalize_mobile(curr_mobile), max_chars=10, placeholder="10 digit number")
                             u_email = st.text_input("Email", value=curr_email)
                             
-                            
-                            c_upd, c_del = st.columns([3, 1])
-                            with c_upd:
-                                if st.form_submit_button("Update Member Details"):
-                                    if not u_name or not u_mobile:
-                                        st.error("Name and Mobile are required.")
-                                    elif not u_mobile.isdigit() or len(u_mobile) != 10:
-                                        st.error("Mobile number must be exactly 10 digits.")
-                                    else:
-                                        success, msg = dm.update_user_details(edit_user_id, u_name, u_mobile, u_email)
-                                        if success:
-                                            st.success(msg)
-                                            # Refresh to show updates
-                                            # st.rerun() 
-                                            # (Rerun happens automatically on submit usually, but let's be safe)
-                                            pass 
-                                        else:
-                                            st.error(msg)
-                            with c_del:
-                                # Danger zone
-                                if st.form_submit_button("Delete Member", type="primary"):
-                                    success, msg = dm.delete_member(edit_user_id)
+                            if st.form_submit_button("Update Member Details"):
+                                if not u_name or not u_mobile:
+                                    st.error("Name and Mobile are required.")
+                                elif not u_mobile.isdigit() or len(u_mobile) != 10:
+                                    st.error("Mobile number must be exactly 10 digits.")
+                                else:
+                                    success, msg = dm.update_user_details(edit_user_id, u_name, u_mobile, u_email)
                                     if success:
                                         st.success(msg)
-                                        st.session_state.edit_user_id = "" # Clear selection
                                         st.rerun()
                                     else:
                                         st.error(msg)
@@ -618,8 +408,6 @@ elif st.session_state.view_mode == "user":
             
         # Apply Logic
         display_books = books
-        # Ensure ID is string for search
-        display_books['id'] = display_books['id'].astype(str)
         
         if search_title:
             display_books = display_books[
@@ -647,7 +435,100 @@ elif st.session_state.view_mode == "user":
              st.caption("Showing first 50 items (Available first). Use search for more.")
         else:
              st.caption(f"Found {len(display_books)} books.")
+
+        # Lend Dialog
+        @st.dialog("Request to Lend")
+        # Lend Dialog
+        @st.dialog("Request to Lend")
+        def lend_dialog(book_id, book_title):
+            st.write(f"Requesting: **{book_title}** ({book_id})")
+            
+            # --- Auto-Fill State Management ---
+            # We use session state keys specific to this dialog session to simulate "auto-fill"
+            # Since dialogs are functions, we need unique keys or handle the form carefully.
+            
+            if 'lend_name' not in st.session_state: st.session_state.lend_name = ""
+            if 'lend_mobile' not in st.session_state: st.session_state.lend_mobile = ""
+            if 'lend_email' not in st.session_state: st.session_state.lend_email = ""
+            
+            # Step 1: Member Lookup (Optional)
+            col_mem1, col_mem2 = st.columns([3, 1])
+            with col_mem1:
+                mem_id_input = st.text_input("Member ID (Optional)", placeholder="e.g. MEM-005")
+            with col_mem2:
+                st.write("")
+                st.write("")
+                if st.button("Check"):
+                    if mem_id_input:
+                        mem = dm.get_member_by_id(mem_id_input)
+                        if mem:
+                            st.session_state.lend_name = mem['name']
+                            st.session_state.lend_mobile = str(mem['mobile'])
+                            st.session_state.lend_email = str(mem['email'])
+                            st.success(f"Found: {mem['name']}")
+                            st.rerun()
+                        else:
+                            st.error("Member ID not found.")
+            
+            st.divider()
+            
+            # Step 2: Details Form
+            with st.form("lend_form"):
+                # If values are in session state, we use them as default.
+                # Note: 'value' in text_input is only used on first render unless key is used.
+                # But inside a dialog, it might reset. Let's try direct values.
+                
+                name = st.text_input("Your Name", value=st.session_state.lend_name)
+                mobile = st.text_input("Mobile Number", value=st.session_state.lend_mobile, max_chars=10, placeholder="10 digit number")
+                email = st.text_input("Email Address", value=st.session_state.lend_email)
+                
+                st.caption("If you don't have a Member ID, just fill above. We'll register you automatically!")
+                
+                submitted = st.form_submit_button("Send Request")
+                
+                if submitted:
+                    if not name or not mobile:
+                        st.error("Name and Mobile are required.")
+                    elif not mobile.isdigit() or len(mobile) != 10:
+                        st.error("Mobile number must be exactly 10 digits.")
+                    else:
+                        # Allow passing member_id if it was verified
+                        mid = mem_id_input if mem_id_input else None
+                        success, msg = dm.lend_book_request(book_id, name, mobile, email, member_id=mid)
+                        if success:
+                            st.success(msg)
+                            # Clear state
+                            st.session_state.lend_name = ""
+                            st.session_state.lend_mobile = ""
+                            st.session_state.lend_email = ""
+                            st.rerun()
+                        else:
+                            st.error(msg)
         
+        # Interest Dialog
+        @st.dialog("Express Interest")
+        def interest_dialog(book_id, book_title):
+            st.write(f"Book: **{book_title}** ({book_id})")
+            st.warning("This book is currently lent out. We'll notify the admin of your interest.")
+            with st.form("interest_form"):
+                name = st.text_input("Your Name")
+                mobile = st.text_input("Mobile Number", max_chars=10, placeholder="10 digit number")
+                email = st.text_input("Email Address")
+                submitted = st.form_submit_button("Submit Interest")
+                
+                if submitted:
+                    if not name or not mobile or not email:
+                        st.error("All fields are required.")
+                    elif not mobile.isdigit() or len(mobile) != 10:
+                        st.error("Mobile number must be exactly 10 digits.")
+                    else:
+                        success, msg = dm.express_interest(book_id, book_title, name, mobile, email)
+                        if success:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
         # Grid
         for index, row in display_books.iterrows():
             with st.container():
@@ -670,22 +551,19 @@ elif st.session_state.view_mode == "user":
     # --- VIEW: MY ACCOUNT ---
     elif st.session_state['user_view'] == 'account':
         st.header("My Account")
-        st.info("Enter your Mobile Number OR Member ID to see your lent books.")
+        st.info("Enter your Mobile Number to see your lent books and request returns.")
         
-        c_acc1, c_acc2, c_acc3 = st.columns([2, 0.5, 2])
+        c_acc1, c_acc2 = st.columns([3, 1])
         with c_acc1:
             my_mobile = st.text_input("Enter Mobile Number", key="my_acc_mobile")
         with c_acc2:
-            st.markdown("<h3 style='text-align: center; padding-top: 20px;'>OR</h3>", unsafe_allow_html=True)
-        with c_acc3:
-            my_mem_id = st.text_input("Enter Member ID", key="my_acc_mem_id")
-            
-        st.button("Check Loans", key="btn_check_loans")
+            st.write("") # Vertical spacer
+            st.write("") 
+            # Button triggers rerun, which processes the text input
+            st.button("Check Loans")
         
-        identifier = my_mobile if my_mobile else my_mem_id
-        
-        if identifier:
-            history = dm.get_user_history(identifier)
+        if my_mobile:
+            history = dm.get_user_history(my_mobile)
             if history:
                 st.subheader(f"My Books ({len(history)})")
                 for item in history:
@@ -696,17 +574,8 @@ elif st.session_state.view_mode == "user":
                         # Status Logic
                         if item['status'] == 'ACTIVE':
                             st.success("Status: LENT (Active)")
-                            # For return, we need mobile number usually. 
-                            # If they searched by ID, we might need to fetch mobile from transaction or user?
-                            # data_manager.request_return currently needs mobile to verify transaction ownership.
-                            # But wait, request_return verifies against transactions table.
-                            # The transactions table has 'user_mobile'.
-                            # If user viewing by ID, we should try to pass the mobile from the transaction record itself to ensure it matches.
-                            
-                            tx_mobile = str(item.get('user_mobile', ''))
-                            
                             if st.button("Request Return", key=f"ret_{item['transaction_id']}"):
-                                success, msg = dm.request_return(item['book_id'], tx_mobile)
+                                success, msg = dm.request_return(item['book_id'], my_mobile)
                                 if success:
                                     st.success(msg)
                                     st.rerun()
