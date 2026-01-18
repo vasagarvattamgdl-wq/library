@@ -1,2 +1,6 @@
-pillow==12.1.0
-qrcode==8.2
+streamlit
+pandas
+openpyxl
+streamlit-keyup
+qrcode
+pillow
